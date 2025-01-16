@@ -8,10 +8,9 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      pod: cloudflared
+      {{- include "cloudflare-tunnel-remote.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      creationTimestamp: null
       annotations:
         # These are here so the deployment rolls when the config or secret change.
         checksum/secret: {{ .Values.cloudflare.tunnel_token | sha256sum }}
@@ -19,12 +18,16 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        pod: cloudflared
+        {{- include "cloudflare-tunnel-remote.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "cloudflare-tunnel-remote.fullname" . }}
       containers:
-      - name: cloudflared
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion  }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
           - cloudflared
@@ -51,3 +54,29 @@ spec:
           failureThreshold: 1
           initialDelaySeconds: 10
           periodSeconds: 10
+        {{- with .Values.nodeSelector }}
+        nodeSelector:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        affinity:
+          {{- with .Values.affinity }}
+          {{- toYaml . | nindent 8 }}
+          {{- else }}
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 10
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchExpressions:
+                    {{- range $k, $v := include "cloudflare-tunnel-remote.selectorLabels" . | fromYaml }}
+                      - key: {{ $k }}
+                        operator: In
+                        values:
+                          - {{ $v }}
+                    {{- end }}
+        {{- end }}
+        {{- with .Values.tolerations }}
+        tolerations:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
