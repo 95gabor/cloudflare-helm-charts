@@ -7,6 +7,10 @@ cloudflare:
   secretName: null
   # the key of the secret where the token is stored
   secretKey: "tunnelToken"
+  secrets: {}
+    # server-ca:
+    #   key: server-ca
+    #   secretName: my-secret-name
 
 image:
   repository: cloudflare/cloudflared

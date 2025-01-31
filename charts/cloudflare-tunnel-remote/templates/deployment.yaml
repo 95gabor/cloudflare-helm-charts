@@ -25,6 +25,14 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "cloudflare-tunnel-remote.fullname" . }}
+      {{- if gt (len .Values.cloudflare.secrets) 0 }}
+      volumes:
+        {{- range $key, $val := .Values.cloudflare.secrets }}
+        - name: {{ $key | quote }}
+          secret:
+            secretName: {{ $val.secretName | quote }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion  }}"
@@ -45,6 +53,14 @@ spec:
               secretKeyRef:
                 name: {{ .Values.cloudflare.secretName | default (include "cloudflare-tunnel-remote.fullname" .) }}
                 key: {{ .Values.cloudflare.secretKey | default "tunnelToken" }}
+          {{- if gt (len .Values.cloudflare.secrets) 0 }}
+          volumeMounts:
+          {{- range $key, $val := .Values.cloudflare.secrets }}
+          - name: {{ $key | quote }}
+            mountPath: "/root/certs/{{ $val.key }}"
+            readOnly: true
+          {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet:
               # Cloudflared has a /ready endpoint which returns 200 if and only if
