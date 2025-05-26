@@ -7,11 +7,24 @@ on:
 
 jobs:
   update-version:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - uses: pre-commit/action@v3.0.1
+
+    - name: Install semver CLI
+      run: |
+        wget -O /usr/local/bin/semver \
+          https://raw.githubusercontent.com/fsaintjacques/semver-tool/master/src/semver
+        chmod +x /usr/local/bin/semver
+        semver --version
 
     - name: Get stable digest
       id: get-stable-digest
@@ -33,19 +46,32 @@ jobs:
         src_file="charts/cloudflare-tunnel-remote/Chart.yaml"
         app_version=$(yq '.appVersion' $src_file)
         chart_version=$(yq '.version' "$src_file")
-        new_version=$(echo $chart_version | awk -F. '{$NF = $NF + 1;} 1' OFS=.)
-        
-        if [ "$app_version" != "$stable_tag" ]; then
-          echo "Updating Chart.yaml with appVersion: $stable_tag chartVersion: $new_version"
-          diff -B <(yq "$src_file") <(yq eval ".appVersion = \"$stable_tag\"" "$src_file") | patch "$src_file"
-          diff -B <(yq "$src_file") <(yq eval ".version = \"$new_version\"" "$src_file") | patch "$src_file"
+
+        if [ "$app_version" == "$stable_tag" ]; then
+          echo "App version: ${app_version} is already up-to-date. No changes needed."
+          exit 0
         fi
 
+        if [[ "$stable_tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [ $(semver get major "$stable_tag") -ne $(semver get major "$app_version") ]; then
+            new_version=$(semver bump minor "$chart_version")
+          else
+            new_version=$(semver bump patch "$chart_version")
+          fi
+        else
+          new_version=$(semver bump patch "$chart_version")
+        fi
+
+        echo "Updating Chart.yaml with appVersion: ${stable_tag} chartVersion: ${new_version}"
+        yq eval ".appVersion = \"$stable_tag\" | .version = \"$new_version\"" -i "$src_file"
+
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
+      uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         title: 'bump(tunnel-remote): update app version'
         body: 'Automatically updated tunnel remote app versions'
         commit-message: 'bump(tunnel-remote): appVersion ${{ env.stable_tag }}'
-        branch-suffix: timestamp
+        # branch-suffix: timestamp
+        branch: bump/home-assistant
+        sign-commits: true
