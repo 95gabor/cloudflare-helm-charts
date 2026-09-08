@@ -79,3 +79,14 @@ tolerations: []
 
 # Default affinity is to spread out over nodes; use this to override.
 affinity: {}
+
+# Cloudflared /ready returns 200 only with an active edge connection.
+# Defaults match the previous hardcoded probe (K8s timeoutSeconds default is 1s).
+livenessProbe:
+  httpGet:
+    path: /ready
+    port: 2000
+  failureThreshold: 1
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 1
